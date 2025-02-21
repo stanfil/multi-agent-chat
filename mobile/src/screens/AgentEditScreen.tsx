@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { ScrollView, Image } from 'react-native'
+import { ScrollView } from 'react-native'
 import {
   YStack,
   XStack,
@@ -10,12 +10,11 @@ import {
   TextArea,
   Card,
   H4,
-  Theme,
-  Circle,
 } from 'tamagui'
 import { ChevronLeft } from '@tamagui/lucide-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Agent } from '../types'
+import { AgentAvatar } from '../components/AgentAvatar'
 
 interface AgentEditScreenProps {
   agent?: Agent
@@ -45,20 +44,6 @@ export const AgentEditScreen = ({ agent, onSave, onBack }: AgentEditScreenProps)
     onSave(newAgent)
   }
 
-  const renderAvatar = () => {
-    if (avatarImage) {
-      return (
-        <Circle size={80} overflow="hidden">
-          <Image 
-            source={{ uri: avatarImage }} 
-            style={{ width: 80, height: 80 }}
-          />
-        </Circle>
-      )
-    }
-    return <Text fontSize={48}>{avatar}</Text>
-  }
-
   return (
     <YStack
       flex={1}
@@ -73,6 +58,7 @@ export const AgentEditScreen = ({ agent, onSave, onBack }: AgentEditScreenProps)
           onPress={onBack}
           backgroundColor="transparent"
           paddingHorizontal="$2"
+          scaleIcon={1}
         />
         <H4 color="$color">{agent ? '编辑 Agent' : '创建 Agent'}</H4>
       </XStack>
@@ -80,7 +66,11 @@ export const AgentEditScreen = ({ agent, onSave, onBack }: AgentEditScreenProps)
       <ScrollView>
         <YStack space="$4" padding="$2">
           <YStack alignItems="center" paddingVertical="$4">
-            {renderAvatar()}
+            <AgentAvatar 
+              avatarImage={avatarImage} 
+              avatar={avatar} 
+              size="large" 
+            />
           </YStack>
 
           <YStack space="$2">

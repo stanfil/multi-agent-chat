@@ -1,12 +1,14 @@
 import { create } from 'zustand'
 import { ChatSession, Message, Agent } from '../types'
 import { PRESET_AGENTS } from '../constants/agents'
+import { container } from '../di/container'
 
 interface ChatStore {
   currentSession: ChatSession | null;
   sessions: ChatSession[];
   agents: Agent[];
   isConnected: boolean;
+  messages: Message[];
   
   // Actions
   setCurrentSession: (session: ChatSession | null) => void;
@@ -14,6 +16,9 @@ interface ChatStore {
   createSession: (agents: Agent[]) => void;
   updateSession: (session: ChatSession) => void;
   setConnectionStatus: (status: boolean) => void;
+  sendMessage: (content: string) => void;
+  clearMessages: () => void;
+  addSession: (session: ChatSession) => void;
   
   // Agent管理
   addAgent: (agent: Agent) => void;
@@ -21,50 +26,51 @@ interface ChatStore {
   deleteAgent: (agentId: string) => void;
 }
 
-export const useChatStore = create<ChatStore>((set) => ({
+export const useChatStore = create<ChatStore>((set, get) => ({
   currentSession: null,
   sessions: [],
   agents: PRESET_AGENTS,
   isConnected: false,
+  messages: [],
 
-  setCurrentSession: (session) => set({ currentSession: session }),
+  setCurrentSession: (session) => set({
+    currentSession: session,
+    // 同时也要更新消息列表
+    messages: session? session.messages : []
+  }),
   
-  addMessage: (message) =>
+  addMessage: (message) => {
     set((state) => {
-      if (!state.currentSession) return state;
+      const newMessages = [...state.messages, message];
       
-      const updatedSession = {
-        ...state.currentSession,
-        messages: [...state.currentSession.messages, message],
-        updatedAt: Date.now(),
-      };
+      // 同时更新 currentSession 的消息列表
+      const updatedSession = state.currentSession
+        ? {
+            ...state.currentSession,
+            messages: newMessages,
+          }
+        : null;
 
+      // 更新 sessions 中对应会话的消息列表
       const updatedSessions = state.sessions.map((s) =>
-        s.id === updatedSession.id ? updatedSession : s
+        s.id === state.currentSession?.id
+          ? { ...s, messages: newMessages }
+          : s
       );
 
       return {
+        messages: newMessages,
         currentSession: updatedSession,
         sessions: updatedSessions,
       };
-    }),
+    });
+  },
 
-  createSession: (agents) =>
-    set((state) => {
-      const newSession: ChatSession = {
-        id: Date.now().toString(),
-        title: '新对话',
-        participants: agents,
-        messages: [],
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-
-      return {
-        currentSession: newSession,
-        sessions: [newSession, ...state.sessions],
-      };
-    }),
+  createSession: (agents) => {
+    // 清除当前会话状态
+    set({ currentSession: null, messages: [] })
+    container.resolve('webSocketService').createSession(agents)
+  },
 
   updateSession: (session) =>
     set((state) => ({
@@ -73,6 +79,20 @@ export const useChatStore = create<ChatStore>((set) => ({
     })),
 
   setConnectionStatus: (status) => set({ isConnected: status }),
+
+  sendMessage: (content) => {
+    container.resolve('webSocketService').sendChatMessage(content)
+  },
+
+  clearMessages: () => {
+    set({ messages: [] })
+  },
+
+  addSession: (session) => {
+    set((state) => ({
+      sessions: [...state.sessions, session]
+    }))
+  },
 
   // Agent管理actions
   addAgent: (agent) =>
@@ -89,4 +109,4 @@ export const useChatStore = create<ChatStore>((set) => ({
     set((state) => ({
       agents: state.agents.filter((a) => a.id !== agentId),
     })),
-})); 
+}));

@@ -15,6 +15,7 @@ export interface Message {
   timestamp: number;
   type: 'text' | 'image' | 'system';
   replyTo?: string; // 回复某条消息的ID
+  sessionId?: string;
 }
 
 export interface ChatSession {

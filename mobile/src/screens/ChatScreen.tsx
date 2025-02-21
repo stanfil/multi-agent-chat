@@ -2,57 +2,89 @@ import React, { useEffect, useState } from 'react'
 import { KeyboardAvoidingView, Platform } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { YStack, XStack, ScrollView, Input, Button, Text, Theme } from 'tamagui'
+import { ChevronLeft, Send } from '@tamagui/lucide-icons'
 import { useChatStore } from '../store/chatStore'
-import { socketService } from '../services/socketService'
 import { Message } from '../types'
+import { AgentAvatar } from '../components/AgentAvatar'
+import { NativeStackScreenProps } from '@react-navigation/native-stack'
+import { RootStackParamList } from '../../App'
 
-export const ChatScreen = () => {
+type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>
+
+export const ChatScreen = ({ navigation }: Props) => {
   const insets = useSafeAreaInsets()
   const [inputText, setInputText] = useState('')
-  const { currentSession, addMessage } = useChatStore()
+  const { messages, currentSession, isConnected, sendMessage, addMessage } = useChatStore()
   
   useEffect(() => {
-    socketService.connect()
-    return () => socketService.disconnect()
-  }, [])
+    // 添加系统消息显示加入的 Agents
+    if (currentSession && messages.length === 0) {
+      const joinMessages: Message[] = currentSession.participants.map(agent => ({
+        id: `join-${agent.id}`,
+        content: `${agent.name} 加入了聊天`,
+        senderId: 'system',
+        timestamp: Date.now(),
+        type: 'system'
+      }))
+      
+      // 直接添加到本地消息列表
+      joinMessages.forEach(msg => addMessage(msg))
+    }
+  }, [currentSession?.id]) // 只在 currentSession 改变时重新执行
 
   const handleSend = () => {
-    if (!inputText.trim()) return
-
-    const message: Omit<Message, 'id' | 'timestamp'> = {
-      content: inputText,
-      senderId: 'user', // 这里需要替换为实际的用户ID
-      type: 'text',
-    }
-
-    socketService.sendMessage(message)
+    if (!inputText.trim() || !isConnected) return
+    
+    // 发送到服务器，消息会通过 WebSocket 返回后添加到列表
+    sendMessage(inputText.trim())
     setInputText('')
   }
 
+  const handleBack = () => {
+    navigation.goBack()
+  }
+
   const renderMessage = (message: Message) => {
+    if (message.type === 'system') {
+      return (
+        <YStack key={message.id} padding="$2" alignItems="center">
+          <Text 
+            color="$gray10" 
+            fontSize="$2"
+            backgroundColor="$gray3"
+            paddingHorizontal="$3"
+            paddingVertical="$1"
+            borderRadius="$4"
+          >
+            {message.content}
+          </Text>
+        </YStack>
+      )
+    }
+
     const isUser = message.senderId === 'user'
-    const participant = currentSession?.participants.find(p => p.id === message.senderId)
+    const agent = isUser ? null : currentSession?.participants.find(p => p.id === message.senderId)
 
     return (
-      <XStack
-        key={message.id}
-        padding="$4"
-        justifyContent={isUser ? 'flex-end' : 'flex-start'}
-      >
-        <YStack
-          backgroundColor={isUser ? '$blue10' : '$gray5'}
-          padding="$3"
-          borderRadius="$4"
-          maxWidth="80%"
-        >
-          {!isUser && (
-            <Text color="$gray11" fontSize="$2" marginBottom="$1">
-              {participant?.name || 'Unknown'}
-            </Text>
-          )}
-          <Text color={isUser ? 'white' : '$gray12'}>{message.content}</Text>
-        </YStack>
-      </XStack>
+      <YStack key={message.id} padding="$2" alignItems={isUser ? 'flex-end' : 'flex-start'}>
+        <XStack space="$2" flexDirection={isUser ? 'row-reverse' : 'row'} alignItems="flex-end">
+          <AgentAvatar
+            avatar={isUser ? '👤' : agent?.avatar}
+            avatarImage={isUser ? undefined : agent?.avatarImage}
+            size="small"
+          />
+          <YStack
+            backgroundColor={isUser ? '$green8' : 'white'}
+            padding="$3"
+            borderRadius="$4"
+            maxWidth="75%"
+            borderWidth={1}
+            borderColor={isUser ? '$green8' : '$gray4'}
+          >
+            <Text color="$gray12">{message.content}</Text>
+          </YStack>
+        </XStack>
+      </YStack>
     )
   }
 
@@ -63,8 +95,21 @@ export const ChatScreen = () => {
         style={{ flex: 1 }}
       >
         <YStack flex={1} paddingTop={insets.top}>
+          <XStack alignItems="center" padding="$4">
+            <Button
+              icon={ChevronLeft}
+              onPress={handleBack}
+              backgroundColor="transparent"
+              paddingHorizontal="$2"
+              scaleIcon={1}
+            />
+            <Text fontSize="$5" fontWeight="bold" color="$color">
+              聊天
+            </Text>
+          </XStack>
+
           <ScrollView flex={1} bounces={false}>
-            {currentSession?.messages.map(renderMessage)}
+            {messages.map(renderMessage)}
           </ScrollView>
 
           <XStack
@@ -72,20 +117,23 @@ export const ChatScreen = () => {
             space="$2"
             borderTopWidth={1}
             borderTopColor="$gray5"
+            backgroundColor="$gray1"
           >
             <Input
               flex={1}
-              size="$4"
-              placeholder="输入消息..."
-              onChangeText={setInputText}
               value={inputText}
+              onChangeText={setInputText}
+              placeholder="输入消息..."
+              onSubmitEditing={handleSend}
             />
-            <Button size="$4" onPress={handleSend}>
-              发送
-            </Button>
+            <Button
+              icon={Send}
+              disabled={!inputText.trim() || !isConnected}
+              onPress={handleSend}
+            />
           </XStack>
         </YStack>
       </KeyboardAvoidingView>
     </Theme>
   )
-} 
+}
